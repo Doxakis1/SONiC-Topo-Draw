@@ -1,72 +1,17 @@
-#include "topodraw.h"
+#include "../inc/topodraw.h"
 
-Device parseDevice(const YAML::Node& node) {
-	Device device;
-
-	if (node["properties"] && node["properties"].IsSequence()) {
-		for (const auto& prop : node["properties"]) {
-			device.m_Properties.properties.push_back(prop.as<std::string>());
-		}
-	}
-
-	if (node["bgp"] && node["bgp"].IsMap()) {
-		const YAML::Node& bgp = node["bgp"];
-		if (bgp["asn"]) device.m_Bgp.asn = bgp["asn"].as<std::string>();
-		if (bgp["peers"] && bgp["peers"].IsMap()) {
-			for (const auto& peerEntry : bgp["peers"]) {
-				Peer peer;
-				peer.asn = peerEntry.first.as<std::string>();
-				const YAML::Node& ips = peerEntry.second;
-				if (ips.IsSequence()) {
-					if (ips.size() > 0) peer.ipv4 = ips[0].as<std::string>();
-					if (ips.size() > 1) peer.ipv6 = ips[1].as<std::string>();
-				}
-				device.m_Bgp.peers.push_back(peer);
-			}
-		}
-	}
-
-	if (node["interfaces"] && node["interfaces"].IsMap()) {
-		for (const auto& ifaceEntry : node["interfaces"]) {
-			Interface iface;
-			iface.name = ifaceEntry.first.as<std::string>();
-			const YAML::Node& ifaceNode = ifaceEntry.second;
-			if (ifaceNode["ipv4"]) iface.ipv4 = ifaceNode["ipv4"].as<std::string>();
-			if (ifaceNode["ipv6"]) iface.ipv6 = ifaceNode["ipv6"].as<std::string>();
-			device.m_Interfaces.push_back(iface);
-		}
-	}
-
-	if (node["bp_interface"] && node["bp_interface"].IsMap()) {
-		const YAML::Node& bp = node["bp_interface"];
-		if (bp["ipv4"]) device.m_Bp_Interface.ipv4 = bp["ipv4"].as<std::string>();
-		if (bp["ipv6"]) device.m_Bp_Interface.ipv6 = bp["ipv6"].as<std::string>();
-	}
-
-	return device;
-}
-
-std::vector<Vm> parseVms(const YAML::Node& node) {
-	std::vector<Vm> vms;
-
-	for (const auto& vmEntry : node) {
-		std::cout << "We tried atleast3" << std::endl;
-		Vm vm;
-		vm.name = vmEntry.first.as<std::string>();
-		const YAML::Node& vmNode = vmEntry.second;
-		if (vmNode["vm_offset"]) vm.vm_offset = vmNode["vm_offset"].as<std::string>();
-		if (vmNode["vlans"]) {
-			const YAML::Node& vlanEntryMap = vmNode["vlans"];
-			std::vector<std::string> vlans;
-			for (auto& vlanEntry : vlanEntryMap) {
-				vlans.push_back(vlanEntry.as<std::string>());
-			}
-			vm.vlans = vlans;
-		}
-		vms.push_back(vm);
-	}
-	return vms;
-}
+//unsigned int findFontSizeToFit(const sf::Font& font, const std::string& str, const sf::Vector2f& boxSize, float padding = 10.f) {
+//	unsigned int fontSize = 1;
+//	sf::Text text(str, font, fontSize);
+//	while (true) {
+//		text.setCharacterSize(fontSize);
+//		sf::FloatRect bounds = text.getLocalBounds();
+//		if (bounds.width > boxSize.x - padding || bounds.height > boxSize.y - padding)
+//			break;
+//		fontSize++;
+//	}
+//	return 1;
+//}
 
 int main(int ac, char **av) {
 	if (ac != 2) {
@@ -94,57 +39,117 @@ int main(int ac, char **av) {
 			std::cerr << "error: 'VMs' key missing or not a map\n";
 			return 1;
 		}
+
 		const YAML::Node& VMsMap = config["topology"];
-		// Parse VMs at top-level
 		std::vector<Vm> vms = parseVms(VMsMap["VMs"]);
 
-		// Print devices and their details
-		for (const auto& [devName, device] : devices) {
-			std::cout << "Device: " << devName << "\n";
-			std::cout << "  BGP ASN: " << device.m_Bgp.asn << "\n";
-
-			for (const auto& peer : device.m_Bgp.peers) {
-				std::cout << "    Peer ASN: " << peer.asn
-					<< ", IPv4: " << peer.ipv4
-					<< ", IPv6: " << peer.ipv6 << "\n";
-			}
-
-			for (const auto& iface : device.m_Interfaces) {
-				std::cout << "  Interface: " << iface.name
-					<< ", IPv4: " << iface.ipv4
-					<< ", IPv6: " << iface.ipv6 << "\n";
-			}
-
-			std::cout << "  BP Interface IPv4: " << device.m_Bp_Interface.ipv4
-				<< ", IPv6: " << device.m_Bp_Interface.ipv6 << "\n";
-
-			std::cout << "  Properties:\n";
-			for (const auto& prop : device.m_Properties.properties) {
-				std::cout << "    " << prop << "\n";
-			}
-
-			std::cout << std::endl;
-		}
-
-		// Print all VMs
-		std::cout << "VMs:\n";
-		for (const auto& vm : vms) {
-			std::cout << "VM Name: " << vm.name << std::endl;
-			std::cout << "\tvm_offset: " << vm.vm_offset << std::endl;
-			std::cout << "\tvlans:" << std::endl;
-			for (const auto& vlan : vm.vlans) {
-				std::cout << "\t\t" << vlan << std::endl;
+		for (const Vm& vm : vms)
+		{
+			for (auto& device : devices)
+			{
+				if (device.first == vm.name)
+				{
+					device.second.m_Vm = vm;
+					break ;
+				}
 			}
 		}
-		std::cout << std::endl;
+		sf::RenderWindow window(sf::VideoMode(1920,1200), "DrawTopology");
+		window.setFramerateLimit(60);
+		sf::Font font;
+		if (!font.loadFromFile("assets/fonts/DejaVuSansMono.ttf")) {
+			std::cerr << "Failed to load font" << std::endl;
+			return 1;
+		}
+		std::map<unsigned int, std::vector<Device>> device_map;
+		for (const auto& device_tuple : devices) {
+			Device device = device_tuple.second;
+			for ( unsigned int i = 0; i < sizeof(topology_order); i++){
+				if (device.m_Vm.name.find(topology_order[i]) != std::string::npos) {
+					device_map[i].push_back(device);
+					break;
+				}
+			}
+		}
+		unsigned int x_coordinate = 25;
+		unsigned int y_coordinate = 50;
+		std::vector<sf::RectangleShape> neighbors;
+		std::vector<sf::Text> neighbors_text;
+		unsigned int dut_device_width = 0;
+		unsigned int dut_device_height = 150;
+		for (auto& map_entry : device_map) 
+		{
+			for ( auto& device : map_entry.second ) {
+				sf::RectangleShape neigh(sf::Vector2f(150,150));
+				neigh.setFillColor(sf::Color::Yellow);
+				std::string boxLabel = device.m_Vm.name ;//+ "\nBPG: " + device.m_Bgp.asn + "\n" + device.m_Properties.properties.at(0) + "\n" +  device.m_Properties.properties.at(1);
+				neigh.setPosition(x_coordinate, y_coordinate );
+				sf::Text text1(boxLabel, font, 20);
+				sf::FloatRect textBounds = text1.getLocalBounds();
+				text1.setOrigin(textBounds.left + textBounds.width / 2.0f, textBounds.top  + textBounds.height / 2.0f);
+				sf::Vector2f deviceCenter(neigh.getPosition().x + neigh.getSize().x / 2.0f, neigh.getPosition().y + neigh.getSize().y / 2.0f);
+				text1.setFillColor(sf::Color::Black);
+				text1.setPosition(deviceCenter);
+				neighbors.push_back(neigh);
+				neighbors_text.push_back(text1);
+				x_coordinate += 175;
+			}
+			auto& last_item = neighbors.back();
+			if (dut_device_width <= last_item.getPosition().x + 150) {
+				dut_device_width = last_item.getPosition().x + 150;
+			}
+			x_coordinate = 25;
+			y_coordinate += dut_device_height + 300;
+		}
+		sf::RectangleShape dut_device(sf::Vector2f(dut_device_width - 25, dut_device_height));
+		dut_device.setFillColor(sf::Color::Blue);
+		dut_device.setPosition(25, 300);
+		sf::Text text1("DUT DEVICE", font, 100);
+		sf::FloatRect textBounds = text1.getLocalBounds();
+		text1.setOrigin(textBounds.left + textBounds.width / 2.0f, textBounds.top  + textBounds.height / 2.0f);
+		sf::Vector2f deviceCenter(dut_device.getPosition().x + dut_device.getSize().x / 2.0f, dut_device.getPosition().y + dut_device.getSize().y / 2.0f);
+		text1.setFillColor(sf::Color::White);
+		text1.setPosition(deviceCenter);
+		neighbors.push_back(dut_device);
+		neighbors_text.push_back(text1);
+		sf::View view = window.getDefaultView();
+		while (window.isOpen()) {
+			sf::Event event;
+			while (window.pollEvent(event)) {
+				if(event.type == sf::Event::Closed)
+					window.close();
+				if (event.type == sf::Event::MouseWheelScrolled) {
+					if (event.mouseWheelScroll.wheel == sf::Mouse::VerticalWheel) {
+						float zoomFactor;
+						if (event.mouseWheelScroll.delta > 0)
+							zoomFactor = 0.9f;  // zoom in
+						else
+							zoomFactor = 1.1f;  // zoom out
 
-	} catch (const YAML::Exception& e) {
-		std::cerr << "YAML Exception: " << e.what() << "\n";
-		return 1;
-	} catch (const std::exception& e) {
-		std::cerr << "Exception: " << e.what() << "\n";
-		return 1;
+						view.zoom(zoomFactor);
+						window.setView(view);
+					}
+				}
+
+				window.clear(sf::Color::White);  // White background
+				for (auto& obj : neighbors) {
+					window.draw(obj);
+				}	
+				for (auto& obj : neighbors_text) {
+					window.draw(obj);
+				}
+				window.display();
+			}
+			}
+
+		} catch (const YAML::Exception& e) {
+			std::cerr << "YAML Exception: " << e.what() << "\n";
+			return 1;
+		} catch (const std::exception& e) {
+			std::cerr << "Exception: " << e.what() << "\n";
+			return 1;
+		}
+
+		return 0;
 	}
-	return 0;
-}
 

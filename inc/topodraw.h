@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <SFML/Graphics.hpp>
 
 struct Interface {
 	std::string name;
@@ -31,16 +32,21 @@ struct Properties {
 	std::vector<std::string> properties;
 };
 
-struct Device {
-	Properties m_Properties;
-	Bgp m_Bgp;
-	std::vector<Interface> m_Interfaces;
-	Bp_interface m_Bp_Interface;
-};
-
 struct Vm {
 	std::string name;
 	std::vector<std::string> vlans;
 	std::string vm_offset;
 };
 
+struct Device {
+	Properties m_Properties;
+	Bgp m_Bgp;
+	std::vector<Interface> m_Interfaces;
+	Bp_interface m_Bp_Interface;
+	Vm m_Vm;
+};
+
+const std::string topology_order[4] = {"T3", "T2", "T1", "T0"};
+//Function definitions
+Device parseDevice(const YAML::Node& node);
+std::vector<Vm> parseVms(const YAML::Node& node);
