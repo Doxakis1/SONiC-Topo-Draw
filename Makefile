@@ -4,7 +4,7 @@
 #
 # Before you run this makefile make sure to install g++ compiler and smfl
 # you can add them both using the following terminal command: 
-# "sudo apt-get install g++ build-essential libsfml-dev"
+# "sudo apt-get install g++ build-essential libsfml-dev libyaml-cpp-dev"
 #
 # For Mac users
 # Before you run this makefile make sure to install g++ compiler and sfml
